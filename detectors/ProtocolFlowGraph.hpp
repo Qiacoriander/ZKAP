@@ -10,8 +10,8 @@ using PFGNodeType = ValueTypeEnum;
 std::string nodeTypeEnumToAbbr(PFGNodeType ne);
 
 enum class PFGEdgeType {
-    Assignment,
-    Constraint,
+    Assignment, // 赋值
+    Constraint, // 约束
 };
 
 std::string edgeTypeEnumToAbbr(PFGEdgeType ee);

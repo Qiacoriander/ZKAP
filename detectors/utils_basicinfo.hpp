@@ -23,17 +23,18 @@ const std::string fn_powi_prefix = "fn_intrinsic_utils_powi";
 const std::string fn_switch_prefix = "fn_intrinsic_utils_switch";
 const std::string const_inline_array = "const_inline_array";
 
+// 也是PFGNodeType
 enum class ValueTypeEnum {
-    InputSignal,
-    IntermediateSignal,
-    OutputSignal,
-    ComponentInput,
-    ComponentOutput,
-    Argument,
-    Constant,
-    Expression,
-    Component,
-    Variable,
+    InputSignal,        // 输入信号
+    IntermediateSignal, // 中间信号
+    OutputSignal,       // 输出信号
+    ComponentInput,     // 组件输入
+    ComponentOutput,    // 组件输出
+    Argument,           // 函数参数
+    Constant,           // 常量
+    Expression,         // 表达式
+    Component,          // 组件
+    Variable,           // 变量
 };
 
 static const ValueTypeEnum VariableTypeAll[] = {

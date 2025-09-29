@@ -728,20 +728,24 @@ bool PFGraph::constrainedAsConst(PFGNode *n) {
 
 // 判断输出信号是否未被约束
 bool PFGraph::unconstrainedOutput(PFGNode *n) {
+    // 判断是否在hacking_templates中
+    // hacking_templates中包含一些“有问题、难以实现或构建代价太高"的模板名
     if (this->is_hacking) {
         return false;
     }
+    // 输出信号
     if (n->type != PFGNodeType::OutputSignal) {
         return false;
     }
-    bool constrainedByInput = this->constrainedByInput(n);
-    bool constrainedAsConst = this->constrainedAsConst(n);
+    bool constrainedByInput = this->constrainedByInput(n); // 检查信号是否被输入约束
+    bool constrainedAsConst = this->constrainedAsConst(n); // 检查信号是否被常量约束
     return !(constrainedByInput || constrainedAsConst);
 }
 
 // 1. 未约束输出uco
 NameVec PFGraph::detectUnconstrainedOutput() {
     NameVec results = NameVec();
+    // 遍历图中所有顶点
     for (auto p : this->nodes) {
         auto n = p.second;
         if (this->unconstrainedOutput(n)) {
@@ -751,25 +755,32 @@ NameVec PFGraph::detectUnconstrainedOutput() {
     return results;
 }
 
-// 判断组件输入是否未被约束
+// 判断组件输入是否【未】被约束
 bool PFGraph::unconstrainedCompInput(PFGNode *n) {
     if (this->is_hacking) {
         return false;
     }
+    // 当前节点得是【组件输入】
     if (n->type != PFGNodeType::ComponentInput) {
         return false;
     }
+    // 检查节点n所有的入边
     for (auto e : n->flowfrom) {
+        // 如果n存在一条约束边e（Constraint），且该约束边e的 from->var_name 和当前节点 var_name 不同
+        // 说明有“外部组件”影响了n，说明存在对n的约束, 提前结束返回 false。
         if (e->type == PFGEdgeType::Constraint &&
             e->from->var_name != n->var_name) {
             return false;
         }
     }
     for (auto e : n->flowto) {
+        // 同理
         if (e->type == PFGEdgeType::Constraint &&
             e->to->var_name != n->var_name) {
             return false;
         }
+        // 如果n的出边e的 to 节点是表达式类型，遍历该表达式的所有出边&入边
+        // 如果表达式的任一出边&入边是约束边，说明存在对n的约束, 提前结束返回 false。
         if (e->to->type == PFGNodeType::Expression) {
             auto to = e->to;
             for (auto e1 : to->flowto) {
@@ -790,6 +801,7 @@ bool PFGraph::unconstrainedCompInput(PFGNode *n) {
 // 2. 未约束组件输入usci
 NameVec PFGraph::detectUnconstrainedCompInput() {
     NameVec results = NameVec();
+    // 遍历图中所有顶点
     for (auto p : this->nodes) {
         auto n = p.second;
         if (this->unconstrainedCompInput(n)) {
@@ -802,9 +814,14 @@ NameVec PFGraph::detectUnconstrainedCompInput() {
 // 3. 数据流约束不一致dcd
 NameVec PFGraph::detectDataflowConstraintDis() {
     auto names = NameVec();
+    // nodeFlowsTo:
+    //  key: hash(n_name)   即节点的哈希
+    //  value: n_name       数据流可达的 节点的哈希 集合
     for (auto p : nodeFlowsTo) {
         auto n_name = p.first;
         auto n_set = p.second;
+        // 对于每一对<起点,终点>，检查它们是否被约束
+        // 如果数据流可达(在nodeFlowsTo这个map中)，但不被约束(isConstrained)，则认为有约束不一致
         for (auto n_name1 : n_set) {
             if (!this->isConstrained(n_name, n_name1)) {
                 auto rep =
@@ -816,7 +833,7 @@ NameVec PFGraph::detectDataflowConstraintDis() {
     return names;
 }
 
-// 判断节点是否为检查信号
+// 判断节点是否存在赋值边
 bool PFGraph::isCheckingSignal(PFGNode *n) {
     for (auto e : n->flowto) {
         if (e->type == PFGEdgeType::Assignment) {
@@ -831,19 +848,23 @@ bool PFGraph::unusedCompOutput(PFGNode *n) {
     if (this->is_hacking) {
         return false;
     }
+    // 当前只考虑【组件输出】节点
     if (n->type != PFGNodeType::ComponentOutput) {
         return false;
     }
+    // 拆分出 var_i_name（组件变量名）和 signal_name（信号名）。
     auto var_signal_p = splitNamePairMerged(n->getName());
     auto var_i_name = var_signal_p.first;
     auto signal_name = var_signal_p.second;
-    auto comp_name = this->collector->comp_var2comp_names[var_i_name];
-    auto sub_graph = this->global_graphs[comp_name];
+    auto comp_name = this->collector->comp_var2comp_names[var_i_name]; // 根据组件变量名获取组件名
+    auto sub_graph = this->global_graphs[comp_name]; // 该组件对应的子图
     if (sub_graph->is_hacking) {
         return false;
     }
     auto sub_o_node =
         sub_graph->getNode(PFGNodeType::OutputSignal, signal_name);
+    // 检查子图中的该输出节点是否存在赋值边PFGEdgeType::Assignment
+    // (被使用过，提前结束返回 false)
     if (sub_graph->isCheckingSignal(sub_o_node)) {
         return false;
     }
@@ -852,6 +873,7 @@ bool PFGraph::unusedCompOutput(PFGNode *n) {
             return false;
         }
     }
+    // TODO: 为什么要检查入边...
     for (auto e : n->flowfrom) {
         if (e->from->var_name != n->var_name) {
             return false;
@@ -877,10 +899,13 @@ bool PFGraph::unusedSignal(PFGNode *n) {
     if (this->is_hacking) {
         return false;
     }
+    // 【组件输出】节点和【常量】节点不考虑
+    // 前者在上一个检测中已经考虑过了
     if (n->type == PFGNodeType::ComponentOutput ||
         n->type == PFGNodeType::Constant) {
         return false;
     }
+    // 没有入边和出边，说明未被使用，也没有使用到别人，判定为未使用信号
     return (n->flowfrom.size() + n->flowto.size()) == 0;
 }
 
@@ -896,15 +921,18 @@ NameVec PFGraph::detectUnusedSignal() {
     return results;
 }
 
-// 判断表达式分母是否包含信号
+// 递归判断一个表达式的分母是否包含信号（变量）
 bool PFGraph::isDenominatorWithSignal(Instruction *inst) {
+    // 判断是否为二元运算
     if (isa<BinaryOperator>(inst)) {
         auto bin_inst = dyn_cast<BinaryOperator>(inst);
+        // 仅处理除法运算
         if (bin_inst->getOpcode() == Instruction::SDiv) {
-            if (flatExpression(bin_inst->getOperand(1)).size() > 0) {
+            if (flatExpression(bin_inst->getOperand(1)).size() > 0) { // TODO
                 return true;
             };
         };
+        // 递归地检查所有操作数
         for (auto &opd : bin_inst->operands()) {
             if (isa<Instruction>(opd)) {
                 auto i = dyn_cast<Instruction>(opd);
@@ -941,6 +969,24 @@ NameVec PFGraph::detectDivideByZeroUnsafe() {
     return results;
 }
 
+// bool PFGraph::isMultipleExpression(Instruction *inst) {
+//     if (isa<BinaryOperator>(inst)) {
+//         auto bin_inst = dyn_cast<BinaryOperator>(inst);
+//         if (bin_inst->getOpcode() == Instruction::Mul) {
+//             return true;
+//         };
+//         for (auto &opd : bin_inst->operands()) {
+//             if (isa<Instruction>(opd)) {
+//                 auto i = dyn_cast<Instruction>(opd);
+//                 if (this->isSensitiveExpression(i)) {
+//                     return true;
+//                 }
+//             }
+//         }
+//     }
+//     return false;
+// }
+
 // 判断分支条件是否包含信号
 bool PFGraph::isBranchCondWithSignal(Instruction *inst) {
     if (isa<BinaryOperator>(inst)) {
@@ -965,24 +1011,6 @@ bool PFGraph::isBranchCondWithSignal(Instruction *inst) {
     }
     return false;
 }
-
-// bool PFGraph::isMultipleExpression(Instruction *inst) {
-//     if (isa<BinaryOperator>(inst)) {
-//         auto bin_inst = dyn_cast<BinaryOperator>(inst);
-//         if (bin_inst->getOpcode() == Instruction::Mul) {
-//             return true;
-//         };
-//         for (auto &opd : bin_inst->operands()) {
-//             if (isa<Instruction>(opd)) {
-//                 auto i = dyn_cast<Instruction>(opd);
-//                 if (this->isSensitiveExpression(i)) {
-//                     return true;
-//                 }
-//             }
-//         }
-//     }
-//     return false;
-// }
 
 // 判断节点是否为包含信号的分支条件
 bool PFGraph::isBranchCondWithSignal(PFGNode *n) {
@@ -1009,19 +1037,14 @@ NameVec PFGraph::detectNondeterministicDataflow() {
 
 // 8. 类型不匹配
 NameVec PFGraph::detectTypeMismatch() {
-    // Mock
+    // 需要检查的组件类型
+    // 【需要】输入经过“范围证明”的组件模板名集合
     NameSet num2bits_required = {
         "LessThan", "LessEqThan", "GreaterThan", "GreaterEqThan", "BigLessThan",
     };
 
-    // Mock
-    NameSet num2bits_like = {
-        "Num2Bits",
-        "Num2Bits_strict",
-        "RangeProof",
-        "MultiRangeProof",
-        "RangeCheck2D",
-    };
+    // 【能进行】“范围证明”类的组件模板名集合
+    NameSet num2bits_like = {"Num2Bits","Num2Bits_strict","RangeProof","MultiRangeProof","RangeCheck2D",};
 
     if (this->is_hacking) {
         return NameVec();
@@ -1031,6 +1054,7 @@ NameVec PFGraph::detectTypeMismatch() {
 
     for (auto p : this->nodes) {
         auto n = p.second;
+        // 处理所有的ComponentInput节点
         if (n->type != PFGNodeType::ComponentInput) {
             continue;
         }
@@ -1039,11 +1063,14 @@ NameVec PFGraph::detectTypeMismatch() {
         auto comp_name = this->collector->comp_var2comp_names[comp_var_name];
         auto template_name = normalizeComponentName(comp_name);
 
+        // 只对属于 num2bits_required 集合的组件输入做检查
         if (!num2bits_required.count(template_name)) {
             continue;
         }
 
         auto input_nodes = NodeVec();
+        // 遍历该输入节点的所有入边（flowfrom），收集所有“信号”类型的输入节点。
+        // 如果入边来自表达式节点，还会递归收集表达式的输入信号
         for (auto e : n->flowfrom) {
             if (e->type == PFGEdgeType::Constraint) {
                 continue;
@@ -1060,7 +1087,7 @@ NameVec PFGraph::detectTypeMismatch() {
                 }
             }
         }
-
+        // 检查输入信号是否被“位分解/范围证明”检查
         for (auto n1 : input_nodes) {
             auto isChecked = false;
             auto flowsTo = this->flowsTo(n1);
@@ -1128,35 +1155,45 @@ bool PFGraph::isTrivialInstruction(Value *v) {
     return false;
 }
 
-// 判断赋值边是否可以被重写
+// 判断赋值边是否可以被重写赋值
 bool PFGraph::isRewritableAssignment(PFGEdge *e) {
+    // 只考虑赋值边
+    // 在有赋值边的基础上，检查其约束边
     if (e->type != PFGEdgeType::Assignment) {
         return false;
     }
     auto from = e->from;
     auto to = e->to;
+    // 如果 from 和 to 之间存在 Constraint 约束边，则不是可重写赋值
     for (auto e1 : from->flowto) {
         if (e1->to == to && e1->type == PFGEdgeType::Constraint) {
             return false;
         }
     }
+    // t同上
     for (auto e1 : from->flowfrom) {
         if (e1->from == to && e1->type == PFGEdgeType::Constraint) {
             return false;
         }
     }
+    // 如果 to 节点是表达式类型，则不是可重写赋值
     if (to->type == PFGNodeType::Expression) {
         return false;
     }
     // Now, to node is a signal.
+
+    // 如果 from 节点不是表达式类型，则认为是可重写赋值（即信号直接赋值给信号
     if (from->type != PFGNodeType::Expression) {
         return true;
     }
     // Now, from node is an expression.
+
+    // 如果 from 节点是表达式类型，则只有表达式是“简单指令”（如加减乘等无副作用的简单运算）时，才认为是可重写赋值。
     return this->isTrivialInstruction(from->inst);
 }
 
 // 9. 赋值误用
+// 找出那些“可以被重写”的赋值边（即赋值操作存在潜在风险或冗余），并返回这些边的名称
 NameVec PFGraph::detectAssignmentMisuse() {
     NameVec results = NameVec();
     for (auto p : this->edges) {
