@@ -355,6 +355,7 @@ pub fn flat_expressions<'ctx>(expr: &Expression) -> Vec<&Expression> {
     return all_exprs;
 }
 
+/// 提前出Statement中全部的表达式
 pub fn flat_expressions_from_statement<'ctx>(stmt: &Statement) -> Vec<&Expression> {
     let mut all_exprs: Vec<&Expression> = vec![];
     use Statement::*;

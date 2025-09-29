@@ -66,12 +66,12 @@ def compile_circom(circom_path: str, output_dir: str, arraysize: int = 256):
 
 def detect_llfile(llfile_path: str, detector_name: str, timeout: int):
     cmds = [
-        OPT_PATH,
+        OPT_PATH,                   # llvm 的bin/opt 全称是LLVM Optimizer
         "-f",
         "-enable-new-pm=0",
-        f"--load {PASSLIB_PATH}",
-        f"--{detector_name}",
-        llfile_path,
+        f"--load {PASSLIB_PATH}",   # 【加载】自定义的检测器"LLVM Pass"动态库
+        f"--{detector_name}",       # 【指定】要使用的检测器"LLVM Pass"
+        llfile_path,                # 待分析的ll文件路径（对应circom电路）
     ]
     return execute(cmds, timeout=timeout, stdout=DEVNULL, stderr=PIPE)
 

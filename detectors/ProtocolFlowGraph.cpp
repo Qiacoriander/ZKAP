@@ -2,8 +2,11 @@
 
 #include <sstream>
 
+
+// 将节点类型枚举转换为缩写字符串
 std::string nodeTypeEnumToAbbr(PFGNodeType ne) { return typeEnumToAbbr(ne); }
 
+// 将边类型枚举转换为缩写字符串
 std::string edgeTypeEnumToAbbr(PFGEdgeType ee) {
     switch (ee) {
         case PFGEdgeType::Assignment:
@@ -13,6 +16,7 @@ std::string edgeTypeEnumToAbbr(PFGEdgeType ee) {
     }
 }
 
+// PFGNode 构造函数，初始化节点属性
 PFGNode::PFGNode(PFGNodeType type, std::string name, std::string var_name,
                  Instruction *inst) {
     this->type = type;
@@ -23,6 +27,7 @@ PFGNode::PFGNode(PFGNodeType type, std::string name, std::string var_name,
     this->flowfrom = std::vector<PFGEdge *>();
 }
 
+// 为节点添加一条边，区分入边和出边
 void PFGNode::addEdge(PFGEdge *edge) {
     if (this == edge->from) {
         this->flowto.push_back(edge);
@@ -31,24 +36,30 @@ void PFGNode::addEdge(PFGEdge *edge) {
     }
 }
 
+// 判断两个节点是否相等
 bool PFGNode::operator==(const PFGNode &b) {
     return this->name == b.name && this->type == b.type;
 }
 
+// 判断两个节点是否不等
 bool PFGNode::operator!=(const PFGNode &b) {
     return !(this->name == b.name && this->type == b.type);
 }
 
+// 获取节点的唯一哈希字符串
 std::string PFGNode::getHash(PFGNodeType type, std::string name) {
     return nodeTypeEnumToAbbr(type) + ": " + name;
 }
 
+// 获取当前节点的哈希字符串
 std::string PFGNode::getHash() {
     return PFGNode::getHash(this->type, this->name);
 }
 
+// 获取节点名称
 std::string PFGNode::getName() { return this->name; }
 
+// 格式化输出节点信息
 std::string PFGNode::format() {
     std::string s = this->getName();
     llvm::raw_string_ostream output(s);
@@ -59,28 +70,34 @@ std::string PFGNode::format() {
     return s;
 }
 
+// 判断节点是否为信号类型
 bool PFGNode::isSignal() {
     return !(this->type == PFGNodeType::Constant ||
              this->type == PFGNodeType::Expression);
 }
 
+// PFGEdge 构造函数，初始化边属性
 PFGEdge::PFGEdge(PFGEdgeType type, PFGNode *from, PFGNode *to) {
     this->type = type;
     this->from = from;
     this->to = to;
 }
 
+// 格式化输出边信息
 std::string PFGEdge::format() { return this->getName(); }
 
+// 判断两条边是否相等
 bool PFGEdge::operator==(const PFGEdge &b) {
     return *this->from == *b.from && *this->to == *b.to && this->type == b.type;
 }
 
+// 判断两条边是否不等
 bool PFGEdge::operator!=(const PFGEdge &b) {
     return !(*this->from == *b.from && *this->to == *b.to &&
              this->type == b.type);
 }
 
+// 获取边的唯一哈希字符串
 std::string PFGEdge::getHash(PFGEdgeType type, PFGNode *from, PFGNode *to) {
     std::string m;
     switch (type) {
@@ -94,10 +111,12 @@ std::string PFGEdge::getHash(PFGEdgeType type, PFGNode *from, PFGNode *to) {
     return from->getHash() + m + to->getHash();
 }
 
+// 获取当前边的哈希字符串
 std::string PFGEdge::getHash() {
     return PFGEdge::getHash(this->type, this->from, this->to);
 }
 
+// 获取边的名称
 std::string PFGEdge::getName() {
     std::string m;
     switch (type) {
@@ -111,6 +130,7 @@ std::string PFGEdge::getName() {
     return this->from->getName() + m + this->to->getName();
 }
 
+// 定位源节点，根据值类型创建或查找节点
 PFGNode *PFGraph::locateSourceNode(Value *v) {
     if (isArgument(v)) {
         auto res = this->createNode(PFGNodeType::Argument,
@@ -163,6 +183,7 @@ PFGNode *PFGraph::locateSourceNode(Value *v) {
     assert(false);
 }
 
+// 定位目标节点，根据值类型查找节点
 PFGNode *PFGraph::locateDestinationNode(Value *v) {
     auto inst = dyn_cast<Instruction>(v);
     if (isVariable(inst)) {
@@ -180,6 +201,7 @@ PFGNode *PFGraph::locateDestinationNode(Value *v) {
     assert(false);
 }
 
+// PFGraph 构造函数，初始化图结构并构建图
 PFGraph::PFGraph(GraphMap global_graphs, Collector *collector) {
     NameSet hacking_templates = {
         // Problematic templates
@@ -219,6 +241,7 @@ PFGraph::PFGraph(GraphMap global_graphs, Collector *collector) {
     this->nodeFlowsTo = NameSetMap();
 }
 
+// 获取指定类型和信号名的所有节点
 NodeVec PFGraph::getNodes(PFGNodeType type, std::string signal_name) {
     NodeVec nodes = NodeVec();
     auto array_shape = this->getArrayShape(signal_name);
@@ -231,6 +254,7 @@ NodeVec PFGraph::getNodes(PFGNodeType type, std::string signal_name) {
     return nodes;
 }
 
+// 构建自身信号类型的所有节点
 void PFGraph::buildSelfSignalNodes(NameSet signal_names, PFGNodeType node_ty) {
     for (auto signal_name : signal_names) {
         auto array_shape = this->getArrayShape(signal_name);
@@ -243,6 +267,7 @@ void PFGraph::buildSelfSignalNodes(NameSet signal_names, PFGNodeType node_ty) {
     }
 }
 
+// 构建组件信号相关的所有节点和边
 void PFGraph::buildCompSignalNodes() {
     for (auto p : this->collector->comp_var2comp_names) {
         // var_name: n2b[0]
@@ -289,6 +314,7 @@ void PFGraph::buildCompSignalNodes() {
     }
 }
 
+// 构建子图中的组件信号节点
 NodeVec PFGraph::buildCompSignalNodes(PFGraph *sub_graph,
                                       std::string comp_var_name,
                                       NameSet signal_names,
@@ -308,6 +334,7 @@ NodeVec PFGraph::buildCompSignalNodes(PFGraph *sub_graph,
     return nodes;
 }
 
+// 构建整个数据流图，包括节点和边
 void PFGraph::build() {
     if (this->is_hacking) {
         return;
@@ -343,6 +370,7 @@ void PFGraph::build() {
     };
 }
 
+// 展开表达式，递归获取其依赖的所有节点
 NodeVec PFGraph::flatExpression(Value *v) {
     if (isArgument(v) || isConstant(v)) {
         return NodeVec();
@@ -386,6 +414,7 @@ NodeVec PFGraph::flatExpression(Value *v) {
     return res;
 }
 
+// 递归获取节点所有可达的信号节点哈希集合
 NameSet PFGraph::flowsTo(PFGNode *n) {
     if (this->nodeFlowsTo.count(n->getHash())) {
         return this->nodeFlowsTo[n->getHash()];
@@ -421,6 +450,7 @@ NameSet PFGraph::flowsTo(PFGNode *n) {
     return flowsToSet;
 }
 
+// 根据LLVM值访问信息获取对应的节点集合
 NodeVec PFGraph::getNodes(LLVMValueAccess lv) {
     auto v = lv.first.first;
     if (isArgument(v)) {
@@ -504,6 +534,7 @@ NodeVec PFGraph::getNodes(LLVMValueAccess lv) {
     return res;
 }
 
+// 创建新节点，若已存在则返回已存在的节点
 PFGNode *PFGraph::createNode(PFGNodeType type, std::string name,
                              std::string var_name, Instruction *inst) {
     if (type == PFGNodeType::Component || type == PFGNodeType::Variable) {
@@ -526,6 +557,7 @@ PFGNode *PFGraph::createNode(PFGNodeType type, std::string name,
     return node;
 }
 
+// 创建新边，若已存在则返回已存在的边
 PFGEdge *PFGraph::createEdge(PFGEdgeType type, PFGNode *from, PFGNode *to) {
     auto hash = PFGEdge::getHash(type, from, to);
     if (this->edges.count(hash)) {
@@ -538,6 +570,7 @@ PFGEdge *PFGraph::createEdge(PFGEdgeType type, PFGNode *from, PFGNode *to) {
     return edge;
 }
 
+// 获取指定类型和名称的节点，若不存在则报错
 PFGNode *PFGraph::getNode(PFGNodeType type, std::string name) {
     auto hash = PFGNode::getHash(type, name);
     if (this->nodes.count(hash)) {
@@ -547,6 +580,7 @@ PFGNode *PFGraph::getNode(PFGNodeType type, std::string name) {
     assert(false);
 }
 
+// 获取节点在索引表中的下标
 size_t PFGraph::getNodeIndex(PFGNode *n) {
     auto hash = n->getHash();
     if (this->node_idxes.count(hash)) {
@@ -556,8 +590,10 @@ size_t PFGraph::getNodeIndex(PFGNode *n) {
     assert(false);
 }
 
+// 获取图的名称
 std::string PFGraph::getName() { return this->collector->getName(); }
 
+// 格式化输出图的节点和边信息
 json::Object PFGraph::format() {
     auto obj = json::Object();
     NameVec node_strs = NameVec();
@@ -579,6 +615,7 @@ json::Object PFGraph::format() {
     return obj;
 }
 
+// 获取变量的数组形状信息
 ArrayShape PFGraph::getArrayShape(std::string var_name) {
     if (!this->collector->array_shapes.count(var_name)) {
         return ArrayShape();
@@ -586,6 +623,7 @@ ArrayShape PFGraph::getArrayShape(std::string var_name) {
     return this->collector->array_shapes[var_name];
 }
 
+// 计算图的约束关系和数据依赖
 void PFGraph::compute() {
     if (this->is_hacking) {
         return;
@@ -628,6 +666,7 @@ void PFGraph::compute() {
     }
 }
 
+// 判断节点A是否依赖于节点B
 bool PFGraph::isDepended(std::string node_hash_a, std::string node_hash_b) {
     if (this->is_hacking) {
         return true;
@@ -639,6 +678,7 @@ bool PFGraph::isDepended(std::string node_hash_a, std::string node_hash_b) {
     return this->nodeFlowsTo[node_hash_b].count(node_hash_a);
 }
 
+// 判断节点A和节点B是否在同一约束集合
 bool PFGraph::isConstrained(std::string node_hash_a, std::string node_hash_b) {
     if (this->is_hacking) {
         return true;
@@ -648,6 +688,7 @@ bool PFGraph::isConstrained(std::string node_hash_a, std::string node_hash_b) {
     return this->uf->find(node_a_idx) == this->uf->find(node_b_idx);
 }
 
+// 判断节点是否被输入信号约束
 bool PFGraph::constrainedByInput(PFGNode *n) {
     for (auto p : this->nodes) {
         auto n1 = p.second;
@@ -661,6 +702,7 @@ bool PFGraph::constrainedByInput(PFGNode *n) {
     return false;
 }
 
+// 判断节点是否被常量约束
 bool PFGraph::constrainedAsConst(PFGNode *n) {
     for (auto e : n->flowto) {
         if (e->type == PFGEdgeType::Constraint) {
@@ -684,6 +726,7 @@ bool PFGraph::constrainedAsConst(PFGNode *n) {
     return false;
 }
 
+// 判断输出信号是否未被约束
 bool PFGraph::unconstrainedOutput(PFGNode *n) {
     if (this->is_hacking) {
         return false;
@@ -696,6 +739,7 @@ bool PFGraph::unconstrainedOutput(PFGNode *n) {
     return !(constrainedByInput || constrainedAsConst);
 }
 
+// 1. 未约束输出uco
 NameVec PFGraph::detectUnconstrainedOutput() {
     NameVec results = NameVec();
     for (auto p : this->nodes) {
@@ -707,6 +751,7 @@ NameVec PFGraph::detectUnconstrainedOutput() {
     return results;
 }
 
+// 判断组件输入是否未被约束
 bool PFGraph::unconstrainedCompInput(PFGNode *n) {
     if (this->is_hacking) {
         return false;
@@ -742,6 +787,7 @@ bool PFGraph::unconstrainedCompInput(PFGNode *n) {
     return true;
 }
 
+// 2. 未约束组件输入usci
 NameVec PFGraph::detectUnconstrainedCompInput() {
     NameVec results = NameVec();
     for (auto p : this->nodes) {
@@ -753,6 +799,7 @@ NameVec PFGraph::detectUnconstrainedCompInput() {
     return results;
 }
 
+// 3. 数据流约束不一致dcd
 NameVec PFGraph::detectDataflowConstraintDis() {
     auto names = NameVec();
     for (auto p : nodeFlowsTo) {
@@ -769,6 +816,7 @@ NameVec PFGraph::detectDataflowConstraintDis() {
     return names;
 }
 
+// 判断节点是否为检查信号
 bool PFGraph::isCheckingSignal(PFGNode *n) {
     for (auto e : n->flowto) {
         if (e->type == PFGEdgeType::Assignment) {
@@ -778,6 +826,7 @@ bool PFGraph::isCheckingSignal(PFGNode *n) {
     return false;
 }
 
+// 判断组件输出是否未被使用
 bool PFGraph::unusedCompOutput(PFGNode *n) {
     if (this->is_hacking) {
         return false;
@@ -811,6 +860,7 @@ bool PFGraph::unusedCompOutput(PFGNode *n) {
     return true;
 }
 
+// 4. 未使用组件输出usco
 NameVec PFGraph::detectUnusedCompOutput() {
     NameVec results = NameVec();
     for (auto p : this->nodes) {
@@ -822,6 +872,7 @@ NameVec PFGraph::detectUnusedCompOutput() {
     return results;
 }
 
+// 判断信号是否未被使用
 bool PFGraph::unusedSignal(PFGNode *n) {
     if (this->is_hacking) {
         return false;
@@ -833,6 +884,7 @@ bool PFGraph::unusedSignal(PFGNode *n) {
     return (n->flowfrom.size() + n->flowto.size()) == 0;
 }
 
+// 5. 未使用信号us
 NameVec PFGraph::detectUnusedSignal() {
     NameVec results = NameVec();
     for (auto p : this->nodes) {
@@ -844,6 +896,7 @@ NameVec PFGraph::detectUnusedSignal() {
     return results;
 }
 
+// 判断表达式分母是否包含信号
 bool PFGraph::isDenominatorWithSignal(Instruction *inst) {
     if (isa<BinaryOperator>(inst)) {
         auto bin_inst = dyn_cast<BinaryOperator>(inst);
@@ -865,6 +918,7 @@ bool PFGraph::isDenominatorWithSignal(Instruction *inst) {
     return false;
 }
 
+// 判断表达式是否存在除以信号的风险
 bool PFGraph::isDivideByZeroUnsafe(PFGNode *n) {
     if (n->type != PFGNodeType::Expression) {
         return false;
@@ -875,6 +929,7 @@ bool PFGraph::isDivideByZeroUnsafe(PFGNode *n) {
     return true;
 }
 
+// 6. 除零约束dbz
 NameVec PFGraph::detectDivideByZeroUnsafe() {
     NameVec results = NameVec();
     for (auto p : this->nodes) {
@@ -886,6 +941,7 @@ NameVec PFGraph::detectDivideByZeroUnsafe() {
     return results;
 }
 
+// 判断分支条件是否包含信号
 bool PFGraph::isBranchCondWithSignal(Instruction *inst) {
     if (isa<BinaryOperator>(inst)) {
         auto bin_inst = dyn_cast<BinaryOperator>(inst);
@@ -928,6 +984,7 @@ bool PFGraph::isBranchCondWithSignal(Instruction *inst) {
 //     return false;
 // }
 
+// 判断节点是否为包含信号的分支条件
 bool PFGraph::isBranchCondWithSignal(PFGNode *n) {
     if (n->type != PFGNodeType::Expression) {
         return false;
@@ -938,6 +995,7 @@ bool PFGraph::isBranchCondWithSignal(PFGNode *n) {
     return true;
 }
 
+// 7. 非确定性数据流
 NameVec PFGraph::detectNondeterministicDataflow() {
     NameVec results = NameVec();
     for (auto p : this->nodes) {
@@ -949,6 +1007,7 @@ NameVec PFGraph::detectNondeterministicDataflow() {
     return results;
 }
 
+// 8. 类型不匹配
 NameVec PFGraph::detectTypeMismatch() {
     // Mock
     NameSet num2bits_required = {
@@ -1028,6 +1087,7 @@ NameVec PFGraph::detectTypeMismatch() {
     return results;
 }
 
+// 判断指令是否为简单（可忽略）指令
 bool PFGraph::isTrivialInstruction(Value *v) {
     if (!isa<Instruction>(v)) {
         return true;
@@ -1068,6 +1128,7 @@ bool PFGraph::isTrivialInstruction(Value *v) {
     return false;
 }
 
+// 判断赋值边是否可以被重写
 bool PFGraph::isRewritableAssignment(PFGEdge *e) {
     if (e->type != PFGEdgeType::Assignment) {
         return false;
@@ -1095,6 +1156,7 @@ bool PFGraph::isRewritableAssignment(PFGEdge *e) {
     return this->isTrivialInstruction(from->inst);
 }
 
+// 9. 赋值误用
 NameVec PFGraph::detectAssignmentMisuse() {
     NameVec results = NameVec();
     for (auto p : this->edges) {
@@ -1106,6 +1168,7 @@ NameVec PFGraph::detectAssignmentMisuse() {
     return results;
 }
 
+// 检测约束数量不一致的信号
 NameVec PFGraph::detectNonuniformConstraint() {
     if (this->is_hacking) {
         return NameVec();
@@ -1170,6 +1233,7 @@ NameVec PFGraph::detectNonuniformConstraint() {
     return results;
 }
 
+// 判断节点是否为二次表达式
 bool PFGraph::isQuadricExpression(PFGNode *n) {
     if (n->type != PFGNodeType::Expression) {
         return false;
@@ -1202,6 +1266,7 @@ bool PFGraph::isQuadricExpression(PFGNode *n) {
     return false;
 }
 
+// 判断信号是否为未被二次约束的未约束信号
 bool PFGraph::isUnconstrainedSignalWithoutQC(PFGNode *n) {
     if (n->type == PFGNodeType::Constant ||
         n->type == PFGNodeType::Expression) {
@@ -1235,6 +1300,7 @@ bool PFGraph::isUnconstrainedSignalWithoutQC(PFGNode *n) {
     return true;
 }
 
+// 检测所有未被二次约束的未约束信号
 NameVec PFGraph::detectUnconstrainedSignalWithoutQC() {
     NameVec results = NameVec();
     for (auto p : this->nodes) {
@@ -1246,6 +1312,7 @@ NameVec PFGraph::detectUnconstrainedSignalWithoutQC() {
     return results;
 }
 
+// 初始化并检测所有图，返回图集合
 GraphVec initDetectedGraphs(Module &M, bool compute, bool only_main) {
     auto graphs = GraphVec();
     auto global_graphs = GraphMap();

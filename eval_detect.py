@@ -57,6 +57,7 @@ def detect(args):
     output_dir: str = args.output
     if not path.isdir(output_dir):
         raise ValueError(f"Output path must be a directory, current is: {output_dir}")
+    # 目录则遍历所有circom文件，文件则获取指定文件
     if path.isdir(input_path):
         project_name = path.basename(input_path)
         if project_name == "":
@@ -81,6 +82,11 @@ def detect(args):
             graphviz_pic_path,
         ) = gen_result_path(project_name, circom_filename, output_dir)
         # Compilation
+        # 若不存在ll文件或要求刷新，则编译circom文件——使用的是circom2llvm这一模块
+        # 负责：
+        # 1. 使用LALRPOP框架解析circom为AST（这一步同CIRCOMSPECT）
+        # 2. 从AST中提取CDG（Control Dependency Graph）
+        # 3. 借助llvm将CDG转换为LLVM IR(.ll文件)，保存至llfile_path
         if not path.exists(llfile_path) or args.refresh:
             compile_circom(circom_path, output_subdir, args.arraysize)
         if not path.exists(llfile_path):
@@ -88,7 +94,7 @@ def detect(args):
         # Evaluation
         if args.graphviz:
             if not path.exists(graphviz_pic_path) or args.refresh:
-                _, result = detect_llfile(llfile_path, "PrintGraphviz")
+                _, result = detect_llfile(llfile_path, "PrintGraphviz", args.timeout)
                 with open(graphviz_path, "wb") as f:
                     f.write(result)
                 cmds = [
@@ -102,7 +108,8 @@ def detect(args):
                 execute(cmds)
         elif args.printinfo:
             if not path.exists(printinfo_path) or args.refresh:
-                exec_detection(printinfo_path, llfile_path, "PrintGraphInfo")
+                exec_detection(printinfo_path, llfile_path, "PrintGraphInfo", args.timeout)
+        # 重点关心这块，执行全部的Pass，将结果保存至log_path
         else:
             if not path.exists(log_path) or args.refresh:
                 exec_detection(log_path, llfile_path, "All", args.timeout)

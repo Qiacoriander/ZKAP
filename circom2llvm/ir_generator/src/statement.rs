@@ -215,6 +215,7 @@ pub fn resolve_stmt<'ctx>(
     }
 }
 
+/// 只展开了这么几种，因为其他Statement都是基本语句，不需要递归处理
 pub fn flat_statements(stmt: &Statement) -> Vec<&Statement> {
     let mut all_stmts: Vec<&Statement> = vec![stmt];
     match stmt {

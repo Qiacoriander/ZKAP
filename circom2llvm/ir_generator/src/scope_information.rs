@@ -22,10 +22,10 @@ pub struct ScopeInformation<'ctx> {
     pub default_val_ty: IntType<'ctx>,
 
     arg_tys: Vec<BasicTypeEnum<'ctx>>,
-    dependences: Vec<String>,
+    dependences: Vec<String>, // 对component存在依赖的Expression的id
     ret_ty: Option<BasicTypeEnum<'ctx>>,
     var2ty: HashMap<String, BasicTypeEnum<'ctx>>,
-    var2comp: HashMap<String, String>,
+    var2comp: HashMap<String, String>, // 对Component存在依赖的变量 var->component的id
 }
 
 impl<'ctx> ScopeInformation<'ctx> {
@@ -186,14 +186,14 @@ impl<'ctx> ScopeInformation<'ctx> {
     }
 
     pub fn resolve_dependences(&mut self, body: &Statement) {
-        let stmts = flat_statements(body);
+        let stmts = flat_statements(body); // 将所有的Statement从嵌套结构中获取出来
         let mut exprs = Vec::new();
         for stmt in stmts {
-            collect_depended_components(stmt, self);
+            collect_depended_components(stmt, self);       // 记录Statement中var->comp的映射关系(对组件的依赖)，到scope_info.var2comp
             exprs.append(&mut flat_expressions_from_statement(stmt));
         }
         for expr in exprs {
-            collect_dependences(expr, self);
+            collect_dependences(expr, self);               // 记录对组件存在依赖的Expression的id，到scope_info.dependences
         }
     }
 

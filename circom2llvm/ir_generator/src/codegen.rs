@@ -139,6 +139,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
     }
 
+    /// 构建基本块之间的转移
     pub fn build_block_transferring(
         &self,
         source_bb: BasicBlock<'ctx>,

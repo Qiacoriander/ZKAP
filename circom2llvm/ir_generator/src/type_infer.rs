@@ -72,6 +72,8 @@ pub fn infer_arg_ty_from_expr<'ctx>(
     }
 }
 
+/// 通过Statement进行类型推断
+/// 由各种赋值动作可以推断出一些变量的类型
 pub fn infer_ty_from_stmt<'ctx>(
     env: &GlobalInformation<'ctx>,
     scope_info: &mut ScopeInformation<'ctx>,

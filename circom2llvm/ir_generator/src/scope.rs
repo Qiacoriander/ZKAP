@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 pub struct Scope<'ctx> {
     pub info: ScopeInformation<'ctx>,
-    pub fn_val: Option<FunctionValue<'ctx>>,
+    pub fn_val: Option<FunctionValue<'ctx>>,    // 函数Definition的值
     pub instantiation: ArgTable,
 
     signature: String,

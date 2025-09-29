@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::zip;
 use std::path::PathBuf;
 
+/// 拓扑排序，解析依赖图，返回编译顺序
 pub fn resolve_dependence(dependence_graph: &HashMap<String, Vec<String>>) -> Vec<String> {
     let mut all = dependence_graph.len().clone();
     let mut output: Vec<String> = Vec::new();
@@ -58,6 +59,7 @@ pub fn resolve_dependence(dependence_graph: &HashMap<String, Vec<String>>) -> Ve
     return output;
 }
 
+/// 以主组件为起点，递归解析依赖，返回主组件相关的编译顺序
 pub fn resolve_main_dependence(
     dependence_graph: &HashMap<String, Vec<String>>,
     main_comp: &String,
@@ -76,6 +78,15 @@ pub fn resolve_main_dependence(
     output
 }
 
+/// circom2llvm 的核心生成函数：将 circom 的 CDG（控制依赖图）转换为 LLVM IR
+/// 主要流程：
+/// 1. 初始化 LLVM 上下文、模块、类型、环境等
+/// 2. 解析 circom AST，收集所有模板和函数的依赖关系
+/// 3. 拓扑排序，确定编译顺序
+/// 4. 依次生成函数和模板的 LLVM IR
+/// 5. 若为实例化编译，递归处理主组件及其所有子组件的参数实例化
+/// 6. 生成所有模板的 LLVM IR 函数和指令
+/// 7. 输出 LLVM IR 文件和（可选）summary
 pub fn generate(
     is_instantiation: bool,
     arraysize: u32,
@@ -86,18 +97,21 @@ pub fn generate(
     output_summary_path: &PathBuf,
     generate_summary: bool,
 ) {
+    // 1. 初始化 LLVM 上下文、模块、类型、环境等
     let context = Context::create();
     let file_path = input_path.as_os_str().to_str().unwrap();
     let file_name = input_path.file_name().unwrap().to_str().unwrap();
     let module = context.create_module(file_name);
     module.set_source_file_name(file_path);
     let val_ty = context.i128_type();
+    // TODO: ???
     let codegen = init_codegen(&context, module, val_ty, arraysize);
     let mut env = init_env(&context, val_ty, arraysize, is_instantiation);
     let mut i_manager = init_instantiation_manager();
     let mut summarygen = init_summarygen();
     let mut scope_info_stmt_pairs: Vec<(ScopeInformation, &Statement)> = Vec::new();
     let val_ty = env.val_ty.clone();
+    // 2. 解析 circom AST，收集所有模板和函数的依赖关系
     for defin in definitions {
         let (mut scope_info, body) = match defin {
             Definition::Template {
@@ -123,19 +137,21 @@ pub fn generate(
                 body,
             ),
         };
-        scope_info.resolve_dependences(body);
-        scope_info_stmt_pairs.push((scope_info, body));
+        scope_info.resolve_dependences(body); // 记录好Statement和Expression中对组件的依赖
+        scope_info_stmt_pairs.push((scope_info, body)); // 记录好ScopeInformation和Statement的对应关系，之后对于每个Definition，使用scope_info而非Statement
     }
+    // 3. 构建依赖图
     let mut dependence_graph: HashMap<String, Vec<String>> = HashMap::new();
     for (scope_info, _) in &scope_info_stmt_pairs {
         let owned_deps = scope_info
-            .get_dependences()
+            .get_dependences() // 获取对组件存在依赖的Expression的id
             .iter()
             .map(|s| s.clone())
             .collect();
-        dependence_graph.insert(scope_info.get_name().clone(), owned_deps);
+        dependence_graph.insert(scope_info.get_name().clone(), owned_deps); // 保存好每个scope_info(与Definition对应的)中对组件存在依赖的Expression的id
     }
 
+    // 4. 拓扑排序，确定编译顺序
     let compile_order = if is_instantiation {
         match &main_expr {
             Some(expr) => match expr {
@@ -155,6 +171,7 @@ pub fn generate(
         resolve_dependence(&dependence_graph)
     };
 
+    // 5. 去重，得到最终编译顺序
     let mut unique_compile_order: Vec<String> = Vec::new();
     for c in compile_order {
         if !unique_compile_order.contains(&c) {
@@ -162,12 +179,14 @@ pub fn generate(
         }
     }
 
+    // 6. 辅助函数：获取 scope_info 在编译顺序中的下标
     let get_index = |s: &(ScopeInformation, &Statement)| -> Option<usize> {
         unique_compile_order
             .iter()
             .position(|r| r == s.0.get_name())
     };
 
+    // 7. 过滤和排序 scope_info_stmt_pairs，保证与编译顺序一致
     scope_info_stmt_pairs = scope_info_stmt_pairs
         .into_iter()
         .filter(|s| get_index(s).is_some())
@@ -175,6 +194,7 @@ pub fn generate(
 
     scope_info_stmt_pairs.sort_by(|a, b| get_index(a).cmp(&get_index(b)));
 
+    // 8. 分类：模板和函数分别处理
     let mut templ_pairs: Vec<(ScopeInformation, &Statement)> = Vec::new();
     let mut fn_pairs: Vec<(ScopeInformation, &Statement)> = Vec::new();
     let mut templ_name_pairs: Vec<(String, &Statement)> = Vec::new();
@@ -188,8 +208,9 @@ pub fn generate(
         }
     }
 
+    // 9. 生成所有function的 LLVM IR
     for (mut scope_info, body) in fn_pairs {
-        infer_fn(&env, &mut scope_info, body);
+        infer_fn(&env, &mut scope_info, body); // function及内部变量的类型推断
         env.set_scope_info(scope_info.clone());
         let i = HashMap::new();
         let scope = init_scope(scope_info.clone(), i);
@@ -198,15 +219,18 @@ pub fn generate(
         summarygen.add_function(&f);
     }
 
+    // 10. 模板相关结构体
     let mut templates: Vec<(Template, Statement)> = Vec::new();
 
+    // 11. 生成所有template的LLVM IR
     for (mut scope_info, body) in templ_pairs.into_iter() {
         let scope_name = scope_info.get_name().clone();
-        let templ_info = infer_templ(&context, &mut env, &mut scope_info, body);
+        let templ_info = infer_templ(&context, &mut env, &mut scope_info, body); // template及内部变量的类型推断
         env.set_scope_info(scope_info);
         env.set_template_info(&scope_name, templ_info.clone());
     }
 
+    // 12. 若为实例化编译，递归处理主组件及其所有子组件的参数实例化
     if is_instantiation {
         let main_expr = &main_expr.unwrap();
         match main_expr {
@@ -229,7 +253,8 @@ pub fn generate(
         }
 
         // Collect instantiations from the main component to other components, so we use .rev().
-        for (scope_name, body) in templ_name_pairs.iter().rev() {
+    // 递归处理所有模板的参数实例化，生成所有可能的电路实例
+    for (scope_name, body) in templ_name_pairs.iter().rev() {
             if !i_manager.has_arg2val(scope_name) {
                 // This sub-component is deleted during the rewriting.
                 continue;
@@ -240,6 +265,7 @@ pub fn generate(
             let mut sub_templ_arg_vals = HashSet::new();
             let mut consumed_templ_signatures = HashSet::new();
 
+            // 处理所有参数组合，生成所有实例化体
             while arg2vals.len() > 0 {
                 let origin_arg2val = arg2vals.pop().unwrap();
                 let signature = scope_info.gen_signature(&origin_arg2val);
@@ -271,6 +297,7 @@ pub fn generate(
             }
 
             // Build all possible circuits of the current template.
+            // 生成所有实例化模板的结构体
             for (arg2val, body) in instantiations.into_iter() {
                 let scope_info = env.get_scope_info(scope_name).clone();
                 let templ_info = env.get_template_info(scope_name).clone();
@@ -289,6 +316,7 @@ pub fn generate(
             }
         }
     } else {
+        // 非实例化编译，直接生成模板结构体
         for (scope_name, body) in templ_name_pairs {
             let scope_info = env.get_scope_info(&scope_name).clone();
             let templ_info = env.get_template_info(&scope_name).clone();
@@ -299,14 +327,17 @@ pub fn generate(
         }
     }
 
+    // 13. 生成所有模板的 LLVM IR 函数
     for (t, body) in &mut templates {
         t.build_function(&env, &codegen, body);
     }
 
+    // 14. 生成所有模板的 LLVM IR 指令
     for (t, body) in &mut templates {
         t.build_instrustions(&env, &codegen, body);
         summarygen.add_component(t);
     }
+    // 15. 可选：输出 summary 文件
     if generate_summary {
         let json_result = summarygen.print_to_file(output_summary_path);
         match json_result {
@@ -317,6 +348,7 @@ pub fn generate(
         }
     }
 
+    // 16. 输出 LLVM IR 文件
     let result = codegen.module.print_to_file(&output_path);
     match result {
         Ok(_) => {
