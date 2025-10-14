@@ -25,6 +25,7 @@ pub fn resolve_dependence(dependence_graph: &HashMap<String, Vec<String>>) -> Ve
                 continue;
             }
             let mut satisfied = true;
+            // 如果当前definition的所有依赖都已经在output中，说明可以加入到编译顺序中
             for dep in deps {
                 if !output.contains(&dep) && dep != k {
                     satisfied = false;
@@ -35,6 +36,7 @@ pub fn resolve_dependence(dependence_graph: &HashMap<String, Vec<String>>) -> Ve
                 all -= 1;
             }
         }
+        // 如果在一次循环中，没有任何definition被加入到output中，说明有循环依赖，无法解析，提前终止
         if last_all == all {
             println!("Error: Cannot resolve dependences! Perhaps some includes are missing.");
             for (k, deps) in dependence_graph {
@@ -144,14 +146,16 @@ pub fn generate(
     let mut dependence_graph: HashMap<String, Vec<String>> = HashMap::new();
     for (scope_info, _) in &scope_info_stmt_pairs {
         let owned_deps = scope_info
-            .get_dependences() // 获取对组件存在依赖的Expression的id
+            .get_dependences() // 获取对组件存在依赖的Expression的id(也就是依赖的组件名)
             .iter()
             .map(|s| s.clone())
             .collect();
-        dependence_graph.insert(scope_info.get_name().clone(), owned_deps); // 保存好每个scope_info(与Definition对应的)中对组件存在依赖的Expression的id
+        // 保存好每个scope_info(与Definition对应的)中对组件存在依赖的Expression的id(也就是依赖的组件名)
+        dependence_graph.insert(scope_info.get_name().clone(), owned_deps);
     }
 
     // 4. 拓扑排序，确定编译顺序
+    // 上面在dependence_graph中记录了每个definition中，存在对其他组件有依赖的Expression的id，这里会进到方法里具体去看
     let compile_order = if is_instantiation {
         match &main_expr {
             Some(expr) => match expr {

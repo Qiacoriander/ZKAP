@@ -44,6 +44,7 @@ fn main() {
     let input = PathBuf::from(args.input);
     let input_paths: Vec<PathBuf>;
     if input.is_dir() {
+        // 这里没有递归地处理子目录
         let files_res = fs::read_dir(input);
         match files_res {
             Ok(files) => {
@@ -92,6 +93,7 @@ fn main() {
         println!("Output: {}", output_path.to_string_lossy());
         // Parsing
         let main_expr: Option<Expression>;
+        // 解析获取每个文件的AST，每个文件对应一个AST，但一个AST中有多个Definition
         let entry_ast = parser::run_parser(input_path.clone(), Vec::new());
         match entry_ast {
             Ok(ast) => {
@@ -109,8 +111,9 @@ fn main() {
                 unreachable!();
             }
         }
+        // 不但
         let mut todo_paths: Vec<PathBuf> = vec![input_path.clone()];
-        let mut done_paths: HashSet<PathBuf> = HashSet::new();
+        let mut done_paths: HashSet<PathBuf> = HashSet::new(); // 确保每个文件只被解析一次
         let mut asts: Vec<AST> = vec![];
         while todo_paths.len() > 0 {
             let input_path = todo_paths.pop().unwrap();
@@ -120,8 +123,8 @@ fn main() {
                 Ok(ast) => {
                     for i in &ast.includes {
                         let include_path = match &circomlib_path {
-                            None => working_dir.join(i),
-                            Some(s) => {
+                            None => working_dir.join(i),    // 简单情况，直接在工作目录下找
+                            Some(s) => {          // 复杂情况，需要处理circomlib路径映射
                                 let include_path = working_dir.join(i);
                                 let mut actual_path = PathBuf::new();
                                 let mut has_circomlib = false;
@@ -134,9 +137,9 @@ fn main() {
                                     }
                                 }
                                 if has_circomlib {
-                                    s.join(actual_path)
+                                    s.join(actual_path) // 映射到外部指定的circomlib路径
                                 } else {
-                                    include_path
+                                    include_path        // 普通路径，保持不变
                                 }
                             }
                         };
@@ -153,6 +156,7 @@ fn main() {
                         todo_paths.push(include_path);
                         done_paths.insert(abs_path);
                     }
+                    // 把当前文件所有的include都加入到todo_paths中了，这个文件本身就算处理完了，加入asts中
                     asts.push(ast);
                 }
                 Err((file_library, report_collection)) => {

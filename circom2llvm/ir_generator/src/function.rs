@@ -45,7 +45,7 @@ pub fn infer_fn<'ctx>(
 
 impl<'ctx> Function<'ctx> {
     /// 构建函数的LLVM IR
-    /// 所有构建好的结果都被最终存储找CodeGen的module字段中
+    /// 所有构建好的结果都被最终存储到CodeGen的module字段中
     pub fn build(
         &mut self,
         env: &GlobalInformation<'ctx>,
